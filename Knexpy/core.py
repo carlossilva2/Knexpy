@@ -1,28 +1,36 @@
 import logging
 import sqlite3
-import sys
-from hashlib import md5
 from sqlite3 import Error
-from time import time
 from typing import Any, Literal
 
 from builder import Field, Querybuilder
+from chalk import blue, green, red, yellow
+from utils import sqlite_to_native
 
 
 class Knex:
-    def __init__(self, db: str) -> None:
+    def __init__(self, db: str, type_check: bool = False, complete: bool = True) -> None:
+        logging.basicConfig(
+            level=logging.DEBUG,
+            format=f"[{blue('%(levelname)s')}] → %(message)s",
+            datefmt="%H:%M:%S",
+        )
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         try:
-            self.db = sqlite3.connect(f"{db}.db", timeout=3600)
+            self.db = sqlite3.connect(
+                f"{db}.db" if (".db" not in db and complete) else db, timeout=3600
+            )
             self.query_builder = Querybuilder(self.logger)
+            self.__tables = self.__get_tables()
             self.__db_name = db
+            self.__type_check = type_check
         except Error as e:
             self.logger.error(e)
-            sys.exit(1)
+            raise Exception(e)
 
     def __repr__(self) -> str:
-        return f'Knex(db="{self.__db_name}.db", query="{self.query_builder.to_string()}", values={self.query_builder.values}'
+        return f'{yellow("Knex")}({green("db")}="{self.__db_name}.db", {green("query")}="{self.query_builder.to_string()}", {green("values")}={self.query_builder.values})'
 
     def select(self, *args: str | list[str]) -> "Knex":
         self.query_builder.select(*args)
@@ -65,11 +73,15 @@ class Knex:
     def table(
         self, name: str, fields: "list[Field] | list[str]", not_exists: bool = True
     ) -> bool:
+        if len(fields) == 0:
+            self.logger.error("No fields were inserted")
+            return False
         query = self.query_builder.table(name, fields, not_exists)
         try:
             cursor = self.db.cursor()
             cursor.execute(query)
             self.logger.info("Successfully created table")
+            self.__tables = self.__get_tables()
             return True
         except Error as e:
             self.logger.error(e)
@@ -78,9 +90,42 @@ class Knex:
     def to_string(self, colorize: bool = False) -> str:
         return self.query_builder.to_string(colorize)
 
-    def insert(self, table: str, fields: "list[str]", values: list[Any]):
-        print(self.query_builder.insert(table, fields, values))
-        return None
+    def insert(
+        self, table: str, fields: "list[str]", values: list[Any], multi: bool = False
+    ) -> tuple[str, list[Any]] | bool:
+        statement = self.query_builder.insert(table, fields, values)
+        values = self.query_builder.values
+        self.__validate_data(table, fields, values)
+        if multi:
+            self.query_builder.reset()
+            return (statement, values)
+        cursor = self.db.cursor()
+        try:
+            cursor.execute("BEGIN;")
+            cursor.execute(statement, values)
+            self.db.commit()
+            self.query_builder.reset()
+            return True
+        except Error:
+            self.logger.error(f"An error occured when executing: {red(statement)}")
+            cursor.execute("ROLLBACK;")
+            self.query_builder.reset()
+            return False
+
+    def insert_many(self, statements: list[tuple[str, list[Any]]]) -> bool:
+        faulty = None
+        cursor = self.db.cursor()
+        try:
+            cursor.execute("BEGIN;")
+            for statement in statements:
+                faulty = statement
+                cursor.execute(statement[0], statement[1])
+            self.db.commit()
+            return True
+        except Error:
+            self.logger.error(f"An error occured when executing: {red(faulty)}")
+            cursor.execute("ROLLBACK;")
+            return False
 
     def query(self, json: bool = True) -> list[tuple[Any]] | list[dict[str, Any]]:
         try:
@@ -101,15 +146,24 @@ class Knex:
         return Querybuilder(self.logger)
 
     def raw(self, sql: str, params: list[Any] | None = None, json: bool = True):
+        cursor = self.db.cursor()
+        insert_or_update = "INSERT INTO" in sql or "UPDATE" in sql
         try:
-            cursor = self.db.cursor()
+            if insert_or_update:
+                cursor.execute("BEGIN;")
             cursor.execute(sql) if params == None else cursor.execute(sql, params)
-            keys = [_[0] for _ in [d for d in cursor.description]]
+            if insert_or_update:
+                self.db.commit()
             data = cursor.fetchall()
             if json:
+                if len(data) == 0 or cursor.description == None:
+                    return {}
+                keys = [_[0] for _ in [d for d in cursor.description]]
                 return self.__to_json(keys, data)
             return data
         except Error as e:
+            if insert_or_update:
+                cursor.execute("ROLLBACK;")
             self.logger.error(e)
             self.query_builder.reset()
             return []
@@ -123,101 +177,44 @@ class Knex:
             res.append(block)
         return res
 
-    """ def insert(
-        self, data: dict, table: str, fields: "list | None" = None, empty: bool = False
-    ) -> str:
-        return self.__insert(data, table, fields, empty)
-
-    def get_fields(
-        self,
-        table: str,
-        fields: "list[str] | None" = ["*"],
-        filter: "list[tuple] | None" = None,
-        json: bool = True,
-    ) -> list:
-        if type(fields) != list or table == "" or table == None:
-            return []
-        if fields == [] or fields == None:
-            fields = ["*"]
+    def __get_tables(self) -> dict[str, dict[str, Any]]:
         cursor = self.db.cursor()
-        s = "WHERE "
-        values = []
-        if filter != None and type(filter) == list:
-            for f in filter:
-                values.append(f[2])
-                s = f"{s}{f[0]}{f[1]}? {f[3] if len(f)>3 else ''} "
-        cursor.execute(
-            f"SELECT {','.join(fields)} FROM {table} {'' if filter == None else s}",
-            tuple(values),
-        )
-        _ = cursor.fetchall()
-        return (
-            _
-            if not json
-            else self.__to_json(_, table, fields if "*" not in fields else None)
-        )
+        try:
+            cursor.execute("SELECT * FROM sqlite_master where type='table'")
+            data = cursor.fetchall()
+            block = {}
+            for table in data:
+                block[table[1]] = self.__get_columns(cursor, table[1])
+            return block
+        except Error as e:
+            self.logger.error(e)
+            return {}
 
-    def __insert(
-        self,
-        data: "dict|tuple",
-        table: str,
-        spec_fields: "list | None" = None,
-        empty: bool = False,
-    ) -> str:
-        if type(data) not in [list, tuple]:
-            print("Type not supported")
-            exit(1)
-        temp = None
-        if type(data) == dict:
-            temp = json.dumps(data)
-        else:
-            temp = "".join([str(_) for _ in data])
-        _id = self.__create_id(temp)
-        if type(data) == tuple:
-            d = list(data)
-            d.insert(0, _id)
-            temp = tuple(d)
-        obj = self.__build_payload(data, _id) if type(data) == dict else temp
-        cursor = self.db.cursor()
-        columns = (
-            self.__get_columns(table)
-            if spec_fields == None or spec_fields == []
-            else spec_fields
-        )
-        if len(obj) != len(columns) and not empty:
-            print("Payload size incomplete")
-            exit(1)
-        cursor.execute(
-            f"INSERT INTO {table}{'(' if not empty else ''}{','.join(columns if not empty else [])}{')' if not empty else ''} VALUES({','.join(['?' for _ in range(len(columns))])})",
-            obj,
-        )
-        self.db.commit()
-        return _id
-
-    def __create_id(self, data: str) -> str:
-        def encrypt(*args, **kwargs):
-            "Method to encrypt data"
-            if "method" not in kwargs:
-                raise AttributeError("You must specify a method to encrypt")
-            try:
-                method = eval(kwargs["method"])
-            except Exception:
-                exit(1)
-            string = ""
-            for item in args:
-                string += str(item)
-            return method(string.encode("UTF-8")).hexdigest()
-
-        return encrypt(time(), data, method="md5")
-
-    def __get_columns(self, table: str, display: "list | None" = None) -> list:
-        if display == None:
-            cursor = self.db.cursor()
+    def __get_columns(self, cursor: sqlite3.Cursor, table: str) -> dict[str, Any] | None:
+        try:
             cursor.execute(f"PRAGMA table_info({table})")
-            ans = [f[1] for f in cursor.fetchall()]
-        else:
-            ans = display
-        return ans """
+            data = cursor.fetchall()
+            block = {}
+            for field in data:
+                block[field[1]] = sqlite_to_native(field[2])
+            return block
+        except Error as e:
+            self.logger.error(e)
+
+    def __validate_data(self, table: str, fields: list[str], data: list[Any]) -> None:
+        if self.__type_check:
+            result = True
+            f = self.__tables[table]
+            keys = f.keys()
+            for i, _ in enumerate(fields):
+                if _ not in keys:
+                    result = False
+                    break
+                if type(data[i]) != f[_]:
+                    result = False
+                    break
+            if not result:
+                raise TypeError("One or more values inserted do not match column type")
 
 
 if __name__ == "__main__":
@@ -263,4 +260,28 @@ if __name__ == "__main__":
         .limit(1)
         .order_by("field2") """
     # print(query.query(True))
-    print(db.insert("t", ["field", "field2", "wtv"], [1, 2, 3]), db.query_builder.values)
+    """ db.insert_many(
+        [
+            db.insert(
+                "t", ["field", "field2", "wtv", "salary"], [24, 25, 26, 1], multi=True
+            ),
+            db.insert("t", ["field", "field2", "wtv"], [24, 25, 26], multi=True),
+            db.insert(
+                "t", ["field", "field2", "wtv", "salary"], [9, 10, 11, 1], multi=True
+            ),
+            db.insert(
+                "t", ["field", "field2", "wtv", "salary"], [12, 13, 14, 2], multi=True
+            ),
+            db.insert(
+                "t", ["field", "field2", "wtv", "salary"], [15, 16, 17, 2], multi=True
+            ),
+            db.insert(
+                "t", ["field", "field2", "wtv", "salary"], [18, 19, 20, 2], multi=True
+            ),
+        ]  # type: ignore
+    ) """
+    # db.insert("t", ["field", "field2", "wtv", "salary"], [21, 22, 23, 1])
+    """ db.raw(
+        "INSERT INTO t(id, field, field2, wtv, salary, created_at, modified_at) VALUES ('asdasdasdasdasdqdfqdqdqdqdqd', 0, 0, 0, 1, '1658773456.9365008', '1658773456.9365008');",
+        json=True,
+    ) """

@@ -1,17 +1,19 @@
 import sys
 from logging import Logger
 from sqlite3 import Error
-from typing import Any, Literal, TypedDict
+from time import time
+from typing import Any, Literal, Optional, TypedDict
 
 import chalk
+from utils import uuid
 
 
 class FieldParameters(TypedDict, total=False):
 
-    primary_key: bool
-    null: bool
-    auto_increment: bool
-    unique: bool
+    primary_key: Optional[bool]
+    null: Optional[bool]
+    auto_increment: Optional[bool]
+    unique: Optional[bool]
 
 
 default_params: FieldParameters = {
@@ -32,10 +34,12 @@ class Field:
         self.name = name
         self.type = type
         self.params = params
-        unique = "" if not params["unique"] else "UNIQUE"
-        null = "" if params["null"] else "NOT NULL"
-        primary_key = "" if not params["primary_key"] else "PRIMARY KEY"
-        auto_increment = "" if not params["auto_increment"] else "AUTOINCREMENT"
+        unique = "" if not params.get("unique", False) else "UNIQUE"
+        null = "" if params.get("null", False) else "NOT NULL"
+        primary_key = "" if not params.get("primary_key", False) else "PRIMARY KEY"
+        auto_increment = (
+            "" if not params.get("auto_increment", False) else "AUTOINCREMENT"
+        )
         self.column = f"{name} {type} {primary_key} {auto_increment} {unique} {null}"
         self.is_foreign_key = False
         self.foreign_template = "FOREIGN KEY({column}) REFERENCES {table}({foreign})"
@@ -131,22 +135,29 @@ class Querybuilder:
         if self.__flags["select"]["current"] == 0 or not self.__select:
             self.__select = "SELECT <fields>"
         else:
-            self.__select = f"{self.__select},<fields>"
-        for i, arg in enumerate(f):
-            if type(arg) == str:
-                pass
-            elif type(arg) == list:
-                if len(arg) != 2:
-                    self.logger.error(
-                        "For column aliases, 2 arguments are required: [COLUMN, ALIAS]"
-                    )
-                    raise TypeError(
-                        "For column aliases, 2 arguments are required: [COLUMN, ALIAS]"
-                    )
-                f[i] = f"{arg[0]} as {arg[1]}"
-            else:
-                self.logger.error("Only Strings or List of Strings are allowed")
-                sys.exit(1)
+            if "*" in self.__select:
+                return self
+            if len(f) == 0:
+                return self
+            self.__select = f"{self.__select}, <fields>"
+        if len(f) == 0:
+            f = ["*"]
+        else:
+            for i, arg in enumerate(f):
+                if type(arg) == str:
+                    pass
+                elif type(arg) == list:
+                    if len(arg) != 2:
+                        self.logger.error(
+                            "For column aliases, 2 arguments are required: [COLUMN, ALIAS]"
+                        )
+                        raise TypeError(
+                            "For column aliases, 2 arguments are required: [COLUMN, ALIAS]"
+                        )
+                    f[i] = f"{arg[0]} as {arg[1]}"
+                else:
+                    self.logger.error("Only Strings or List of Strings are allowed")
+                    sys.exit(1)
         fields = ", ".join(f)  # type: ignore
         self.__select = self.__select.replace("<fields>", fields)
         self.__flags["select"]["current"] += 1
@@ -166,7 +177,7 @@ class Querybuilder:
                     "For table aliases, 2 arguments are required: [TABLE, ALIAS]"
                 )
             table = f"{table[0]} {table[1]}"
-        self.__from = self.__from.replace("<table>", table)
+        self.__from = self.__from.replace("<table>", table)  # type: ignore
         # self.__from = f"FROM {table}"
         self.__flags["from"]["current"] += 1
         return self
@@ -237,12 +248,20 @@ class Querybuilder:
         self, name: str, fields: "list[Field] | list[str]", not_exists: bool = True
     ) -> str:
         table_create = self.__create
-        fields.insert(0, Field.varchar("id", params={"primary_key": True, "null": False}))
+        fields.insert(
+            0,
+            Field.varchar(
+                "id",
+                params={
+                    "primary_key": True,
+                },
+            ),  # type: ignore
+        )
         fields = [
             *fields,
             Field.varchar("created_at"),
             Field.varchar("modified_at"),
-        ]
+        ]  # type: ignore
         foreign = []
         columns = []
         for field in fields:
@@ -265,6 +284,13 @@ class Querybuilder:
         t_insert = self.__insert
         if len(fields) != len(values):
             raise Error("Values inserted do not match number of fields")
+        fields.insert(0, "id")
+        values.insert(0, uuid(*fields, *values))
+        _t = time()
+        fields.append("created_at")
+        fields.append("modified_at")
+        values.append(f"{_t}")
+        values.append(f"{_t}")
         t_insert = (
             t_insert.replace("{table}", table)
             .replace("{columns}", f"{', '.join(fields)}")
