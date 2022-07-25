@@ -1,4 +1,3 @@
-import sys
 from logging import Logger
 from sqlite3 import Error
 from time import time
@@ -157,7 +156,7 @@ class Querybuilder:
                     f[i] = f"{arg[0]} as {arg[1]}"
                 else:
                     self.logger.error("Only Strings or List of Strings are allowed")
-                    sys.exit(1)
+                    raise TypeError("Only Strings or List of Strings are allowed")
         fields = ", ".join(f)  # type: ignore
         self.__select = self.__select.replace("<fields>", fields)
         self.__flags["select"]["current"] += 1
