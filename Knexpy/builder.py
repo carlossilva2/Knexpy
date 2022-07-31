@@ -104,6 +104,9 @@ class Field:
 
 
 class Querybuilder:
+
+    ALLOWED_WHERE = ["SELECT", "UPDATE", "DELETE"]
+
     def __init__(self, logger: Logger) -> None:
         self.logger = logger
         self.values = []
@@ -114,20 +117,39 @@ class Querybuilder:
             "where": {"chains": -1, "current": 0},
             "sort": {"chains": 1, "current": 0},
             "limit": {"chains": 1, "current": 0},
+            "update": {"chains": 1, "current": 0},
+            "delete": {"chains": 1, "current": 0},
+            "insert": {"chains": 1, "current": 0},
         }
+
+        self.__originals = {
+            "create": "CREATE TABLE {exists} {table}({columns});",
+            "insert": "INSERT INTO {table}({columns}) VALUES ({values});",
+            "update": "UPDATE {table} SET {columns_values} {where};",
+            "delete": "DELETE FROM {table} {where};",
+        }
+
         self.__select = None
         self.__from = None
         self.__where = None
         self.__order = None
         self.__limit = None
         self.__query = "{select} {from} {where} {order} {limit};"
-        self.__create = "CREATE TABLE {exists} {table}({columns});"
-        self.__insert = "INSERT INTO {table}({columns}) VALUES ({values});"
+        # Transactions
+        self.__create = self.__originals.get("create", "")
+        self.__insert = self.__originals.get("insert", "")
+        self.__update = self.__originals.get("update", "")
+        self.__delete = self.__originals.get("delete", "")
+
+        self.__current_transaction = None
 
     def __repr__(self):
         return f'QueryBuilder(query="{self.to_string()}", values={self.values})'
 
     def select(self, *args: str | list[str]) -> "Querybuilder":
+        if self.__current_transaction != "SELECT":
+            raise Error("Currently not allowed until pending transaction is completed")
+        self.__current_transaction = "SELECT"
         f = [_ for _ in args]
         if self.__flags["select"]["current"] >= self.__flags["select"]["chains"]:
             return self
@@ -163,6 +185,8 @@ class Querybuilder:
         return self
 
     def from_(self, table: str | list[str]) -> "Querybuilder":
+        if self.__current_transaction != "SELECT":
+            raise Error("Currently not allowed until pending transaction is completed")
         if self.__flags["from"]["current"] == 0 or not self.__select:
             self.__from = "FROM <table>"
         else:
@@ -190,6 +214,10 @@ class Querybuilder:
         value: Any,
         join_type: Literal["AND", "OR"] = "AND",
     ) -> "Querybuilder":
+        if self.__current_transaction not in self.ALLOWED_WHERE:
+            raise Error(
+                f"Cannot use {chalk.blue('WHERE')} clause on a {self.__current_transaction} transaction."
+            )
         subquery_values = []
         if self.__flags["where"]["current"] == 0 or not self.__where:
             self.__where = "WHERE <clause>"
@@ -222,10 +250,14 @@ class Querybuilder:
         return self
 
     def limit(self, n: int) -> "Querybuilder":
+        if self.__current_transaction != "SELECT":
+            raise Error("Currently not allowed until pending transaction is completed")
         if self.__flags["limit"]["current"] >= self.__flags["limit"]["chains"]:
             return self
         if self.__flags["limit"]["current"] == 0 or not self.__limit:
             self.__limit = "LIMIT <amount>"
+        if n <= 0:
+            raise Error(f"{chalk.red('LIMIT')} must be higher than 0.")
         self.__limit = self.__limit.replace("<amount>", f"{n}")
         self.__flags["limit"]["current"] += 1
         return self
@@ -233,6 +265,8 @@ class Querybuilder:
     def order_by(
         self, column: str, order: Literal["ASC", "DESC"] = "ASC"
     ) -> "Querybuilder":
+        if self.__current_transaction != "SELECT":
+            raise Error("Currently not allowed until pending transaction is completed")
         if self.__flags["sort"]["current"] >= self.__flags["sort"]["chains"]:
             return self
         if self.__flags["sort"]["current"] == 0 or not self.__order:
@@ -258,8 +292,8 @@ class Querybuilder:
         )
         fields = [
             *fields,
-            Field.varchar("created_at"),
-            Field.varchar("modified_at"),
+            Field.datetime("created_at"),
+            Field.datetime("modified_at"),
         ]  # type: ignore
         foreign = []
         columns = []
@@ -280,6 +314,9 @@ class Querybuilder:
         return table_create
 
     def insert(self, table: str, fields: "list[str]", values: list[Any]) -> str:
+        if self.__current_transaction != "INSERT":
+            raise Error("Currently not allowed until pending transaction is completed")
+        self.__current_transaction = "INSERT"
         t_insert = self.__insert
         if len(fields) != len(values):
             raise Error("Values inserted do not match number of fields")
@@ -298,7 +335,35 @@ class Querybuilder:
         self.values = [*self.values, *values]
         return t_insert
 
+    def update(
+        self,
+        table: str,
+        fields: list[str],
+        values: list[Any],
+        update_modified: bool = True,
+    ) -> "Querybuilder":
+        if self.__current_transaction != "UPDATE":
+            raise Error("Currently not allowed until pending transaction is completed")
+        self.__current_transaction = "UPDATE"
+        if self.__flags["limit"]["current"] >= self.__flags["limit"]["chains"]:
+            return self
+        if len(fields) != len(values):
+            raise Error("Values inserted do not match number of fields")
+        if update_modified:
+            fields.append("modified_at")
+            values.append(time())
+        self.__update = self.__update.replace("{table}", table).replace(
+            "{columns_values}", ", ".join([f"{fields[i]}=?" for i in range(len(values))])
+        )
+        self.values = [*self.values, *values]
+        self.__flags["update"]["current"] += 1
+        return self
+
     def to_string(self, colorize: bool = False) -> str:
+        if self.__current_transaction == "UPDATE":
+            return self.__update.replace("{where}", self.__where if self.__where else "")
+        elif self.__current_transaction == "DELETE":
+            return self.__delete.replace("{where}", self.__where if self.__where else "")
         return self._build_query(colorize)
 
     def _build_query(self, colorize: bool = False) -> str:
@@ -328,5 +393,13 @@ class Querybuilder:
         self.__order = None
         self.__limit = None
         self.__from = None
+        self.__create = self.__originals.get("create", "")
+        self.__insert = self.__originals.get("insert", "")
+        self.__update = self.__originals.get("update", "")
+        self.__delete = self.__originals.get("delete", "")
         self.values = []
         return self
+
+    @property
+    def current_transaction(self):
+        return self.__current_transaction

@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+from datetime import datetime
 from sqlite3 import Error
 from typing import Any, Literal
 
@@ -127,6 +128,33 @@ class Knex:
             cursor.execute("ROLLBACK;")
             return False
 
+    def update(
+        self,
+        table: str,
+        fields: list[str],
+        values: list[Any],
+        update_modified: bool = True,
+    ) -> "Knex":
+        self.query_builder.update(table, fields, values, update_modified=update_modified)
+        return self
+
+    def execute(self) -> bool:
+        if self.query_builder.current_transaction not in ["UPDATE", "DELETE"]:
+            self.logger.error(
+                f"Cannot use execute on {self.query_builder.current_transaction} operation."
+            )
+            return False
+        cursor = self.db.cursor()
+        try:
+            cursor.execute("BEGIN;")
+            cursor.execute(self.query_builder.to_string(), self.query_builder.values)
+            self.db.commit()
+            self.query_builder.reset()
+            return True
+        except Exception:
+            cursor.execute("ROLLBACK;")
+            return False
+
     def query(self, json: bool = True) -> list[tuple[Any]] | list[dict[str, Any]]:
         try:
             cursor = self.db.cursor()
@@ -173,6 +201,10 @@ class Knex:
         for _ in data:
             block = {}
             for i, value in enumerate(_):
+                if keys[i] in ["created_at", "modified_at"]:
+                    value = datetime.fromtimestamp(float(value)).strftime(
+                        "%Y-%m-%dT%H:%M:%SZ"
+                    )
                 block[keys[i]] = value
             res.append(block)
         return res
@@ -244,7 +276,7 @@ if __name__ == "__main__":
     ) """
 
     """ query = (
-        db.select("id", "field", "field2", ["wtv", "field3"])
+        db.select("id", "field", "field2", ["wtv", "field3"], "created_at", "modified_at")
         .from_("t")
         .where("field", "=", "1")
         .where(
@@ -260,6 +292,8 @@ if __name__ == "__main__":
         .limit(1)
         .order_by("field2") """
     # print(query.query(True))
+    # from random import randint
+
     """ db.insert_many(
         [
             db.insert(
@@ -280,8 +314,15 @@ if __name__ == "__main__":
             ),
         ]  # type: ignore
     ) """
-    # db.insert("t", ["field", "field2", "wtv", "salary"], [21, 22, 23, 1])
+    """ db.insert(
+        "t",
+        ["field", "field2", "wtv", "salary"],
+        [randint(0, 1000), randint(0, 1000), randint(0, 1000), randint(0, 1000)],
+    ) """
     """ db.raw(
         "INSERT INTO t(id, field, field2, wtv, salary, created_at, modified_at) VALUES ('asdasdasdasdasdqdfqdqdqdqdqd', 0, 0, 0, 1, '1658773456.9365008', '1658773456.9365008');",
         json=True,
     ) """
+
+    # update = db.update("t", ["field"], [1231927846]).where("id", "=", "1235")
+    # update.execute()
