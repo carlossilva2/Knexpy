@@ -2,11 +2,12 @@ import logging
 import sqlite3
 from datetime import datetime
 from sqlite3 import Error
-from typing import Any, Literal
+from typing import Any, Dict, List, Literal
 
-from builder import Field, Querybuilder
 from chalk import blue, green, red, yellow
-from utils import sqlite_to_native
+
+from .builder import Field, Querybuilder
+from .utils import sqlite_to_native
 
 
 class Knex:
@@ -113,6 +114,28 @@ class Knex:
             self.query_builder.reset()
             return False
 
+    def insert_json(
+        self, table: str, data: Dict[str, Any] | List[Dict[str, Any]]
+    ) -> "Knex":
+        if type(data) == list and len(data) > 0:
+            if len(data[0].keys()) == 0:  # type: ignore
+                self.logger.error("Data provided has no columns")
+                raise Error("No Columns on insert")
+            _ = []
+            for value in data:
+                keys = [key for key in value.keys()]  # type: ignore
+                values = []
+                for key in keys:
+                    values.append(value[key])  # type: ignore
+                _.append(self.insert(table, keys, values, multi=True))
+            self.insert_many(_)
+        elif type(data) == dict and len(data.keys()) > 0:  # type: ignore
+            keys = [key for key in data.keys()]  # type: ignore
+            self.insert(table, keys, [data[_] for _ in keys])  # type: ignore
+        else:
+            self.logger.error("Provided data structure is not supported")
+        return self
+
     def insert_many(self, statements: list[tuple[str, list[Any]]]) -> bool:
         faulty = None
         cursor = self.db.cursor()
@@ -136,6 +159,13 @@ class Knex:
         update_modified: bool = True,
     ) -> "Knex":
         self.query_builder.update(table, fields, values, update_modified=update_modified)
+        return self
+
+    def delete(
+        self,
+        table: str,
+    ) -> "Knex":
+        self.query_builder.delete(table)
         return self
 
     def execute(self) -> bool:
@@ -247,82 +277,3 @@ class Knex:
                     break
             if not result:
                 raise TypeError("One or more values inserted do not match column type")
-
-
-if __name__ == "__main__":
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format="[%(levelname)s] → %(message)s",
-        datefmt="%H:%M:%S",
-    )
-    db = Knex("test")
-
-    """ db.table(
-        "c",
-        [
-            Field.integer("salary"),
-        ],
-        not_exists=False,
-    )
-    db.table(
-        "t",
-        [
-            Field.varchar("field"),
-            Field.varchar("field2"),
-            Field.varchar("wtv"),
-            Field.foreign_key("salary", "c", "id"),
-        ],
-        not_exists=False,
-    ) """
-
-    """ query = (
-        db.select("id", "field", "field2", ["wtv", "field3"], "created_at", "modified_at")
-        .from_("t")
-        .where("field", "=", "1")
-        .where(
-            "salary",
-            "=",
-            db.subquery().select("id").from_("c").where("salary", "=", 200),
-            join_type="OR",
-        )
-        .order_by("id")
-    ) """
-    """ .where("field", "<", 1)
-
-        .limit(1)
-        .order_by("field2") """
-    # print(query.query(True))
-    # from random import randint
-
-    """ db.insert_many(
-        [
-            db.insert(
-                "t", ["field", "field2", "wtv", "salary"], [24, 25, 26, 1], multi=True
-            ),
-            db.insert("t", ["field", "field2", "wtv"], [24, 25, 26], multi=True),
-            db.insert(
-                "t", ["field", "field2", "wtv", "salary"], [9, 10, 11, 1], multi=True
-            ),
-            db.insert(
-                "t", ["field", "field2", "wtv", "salary"], [12, 13, 14, 2], multi=True
-            ),
-            db.insert(
-                "t", ["field", "field2", "wtv", "salary"], [15, 16, 17, 2], multi=True
-            ),
-            db.insert(
-                "t", ["field", "field2", "wtv", "salary"], [18, 19, 20, 2], multi=True
-            ),
-        ]  # type: ignore
-    ) """
-    """ db.insert(
-        "t",
-        ["field", "field2", "wtv", "salary"],
-        [randint(0, 1000), randint(0, 1000), randint(0, 1000), randint(0, 1000)],
-    ) """
-    """ db.raw(
-        "INSERT INTO t(id, field, field2, wtv, salary, created_at, modified_at) VALUES ('asdasdasdasdasdqdfqdqdqdqdqd', 0, 0, 0, 1, '1658773456.9365008', '1658773456.9365008');",
-        json=True,
-    ) """
-
-    # update = db.update("t", ["field"], [1231927846]).where("id", "=", "1235")
-    # update.execute()

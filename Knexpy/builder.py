@@ -4,7 +4,8 @@ from time import time
 from typing import Any, Literal, Optional, TypedDict
 
 import chalk
-from utils import uuid
+
+from .utils import uuid
 
 
 class FieldParameters(TypedDict, total=False):
@@ -147,7 +148,7 @@ class Querybuilder:
         return f'QueryBuilder(query="{self.to_string()}", values={self.values})'
 
     def select(self, *args: str | list[str]) -> "Querybuilder":
-        if self.__current_transaction != "SELECT":
+        if self.__current_transaction != "SELECT" and self.__current_transaction:
             raise Error("Currently not allowed until pending transaction is completed")
         self.__current_transaction = "SELECT"
         f = [_ for _ in args]
@@ -185,7 +186,7 @@ class Querybuilder:
         return self
 
     def from_(self, table: str | list[str]) -> "Querybuilder":
-        if self.__current_transaction != "SELECT":
+        if self.__current_transaction != "SELECT" and self.__current_transaction:
             raise Error("Currently not allowed until pending transaction is completed")
         if self.__flags["from"]["current"] == 0 or not self.__select:
             self.__from = "FROM <table>"
@@ -250,7 +251,7 @@ class Querybuilder:
         return self
 
     def limit(self, n: int) -> "Querybuilder":
-        if self.__current_transaction != "SELECT":
+        if self.__current_transaction != "SELECT" and self.__current_transaction:
             raise Error("Currently not allowed until pending transaction is completed")
         if self.__flags["limit"]["current"] >= self.__flags["limit"]["chains"]:
             return self
@@ -265,7 +266,7 @@ class Querybuilder:
     def order_by(
         self, column: str, order: Literal["ASC", "DESC"] = "ASC"
     ) -> "Querybuilder":
-        if self.__current_transaction != "SELECT":
+        if self.__current_transaction != "SELECT" and self.__current_transaction:
             raise Error("Currently not allowed until pending transaction is completed")
         if self.__flags["sort"]["current"] >= self.__flags["sort"]["chains"]:
             return self
@@ -314,7 +315,7 @@ class Querybuilder:
         return table_create
 
     def insert(self, table: str, fields: "list[str]", values: list[Any]) -> str:
-        if self.__current_transaction != "INSERT":
+        if self.__current_transaction != "INSERT" and self.__current_transaction:
             raise Error("Currently not allowed until pending transaction is completed")
         self.__current_transaction = "INSERT"
         t_insert = self.__insert
@@ -342,10 +343,10 @@ class Querybuilder:
         values: list[Any],
         update_modified: bool = True,
     ) -> "Querybuilder":
-        if self.__current_transaction != "UPDATE":
+        if self.__current_transaction != "UPDATE" and self.__current_transaction:
             raise Error("Currently not allowed until pending transaction is completed")
         self.__current_transaction = "UPDATE"
-        if self.__flags["limit"]["current"] >= self.__flags["limit"]["chains"]:
+        if self.__flags["update"]["current"] >= self.__flags["update"]["chains"]:
             return self
         if len(fields) != len(values):
             raise Error("Values inserted do not match number of fields")
@@ -357,6 +358,19 @@ class Querybuilder:
         )
         self.values = [*self.values, *values]
         self.__flags["update"]["current"] += 1
+        return self
+
+    def delete(
+        self,
+        table: str,
+    ) -> "Querybuilder":
+        if self.__current_transaction != "DELETE" and self.__current_transaction:
+            raise Error("Currently not allowed until pending transaction is completed")
+        self.__current_transaction = "DELETE"
+        if self.__flags["delete"]["current"] >= self.__flags["delete"]["chains"]:
+            return self
+        self.__delete = self.__delete.replace("{table}", table)
+        self.__flags["delete"]["current"] += 1
         return self
 
     def to_string(self, colorize: bool = False) -> str:
