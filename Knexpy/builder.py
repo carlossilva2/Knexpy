@@ -147,6 +147,9 @@ class Querybuilder:
     def __repr__(self):
         return f'QueryBuilder(query="{self.to_string()}", values={self.values})'
 
+    def count(self, column: str = "*") -> str:
+        return f"COUNT({column})"
+
     def select(self, *args: str | list[str]) -> "Querybuilder":
         if self.__current_transaction != "SELECT" and self.__current_transaction:
             raise Error("Currently not allowed until pending transaction is completed")

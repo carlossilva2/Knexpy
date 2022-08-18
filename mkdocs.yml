@@ -1,0 +1,7 @@
+site_name: Knexpy
+theme:
+  name: readthedocs
+  highlightjs: true
+  hljs_languages:
+    - python
+    - markdown

@@ -18,12 +18,12 @@ with open("README.md", "r") as fh:
 setup(
     author="Carlos Silva",
     author_email="carlos.miguel.silva@protonmail.com",
-    name="Knexpy",
-    description="A Knex like module for abstracting Python's SQLite",
+    name="knexpy",
+    description="A KnexJS like module for abstracting Python's SQLite",
     long_description=long_description,
     long_description_content_type="text/markdown",
     version="0.1.0",
-    url="https://github.com/carlossilva2/pyTasker",
+    url="https://github.com/carlossilva2/Knexpy",
     packages=find_packages(),
     license="GPLv3",
     classifiers=[
@@ -34,11 +34,12 @@ setup(
         "Natural Language :: English",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Topic :: Software Development",
         "Typing :: Typed",
     ],
-    python_requires=">=3.10",
+    python_requires=">=3.9",
     install_requires=[
         "pychalk",
     ],
@@ -47,3 +48,4 @@ setup(
         "Source": "https://github.com/carlossilva2/Knexpy",
     },
 )
+# "Documentation": "https://knexpy.readthedocs.io",

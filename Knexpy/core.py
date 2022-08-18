@@ -34,6 +34,24 @@ class Knex:
     def __repr__(self) -> str:
         return f'{yellow("Knex")}({green("db")}="{self.__db_name}.db", {green("query")}="{self.query_builder.to_string()}", {green("values")}={self.query_builder.values})'
 
+    def begin(self, cursor: sqlite3.Cursor | None = None) -> "Knex":
+        c = self.db.cursor() if not cursor else cursor
+        c.execute("BEGIN;")
+        return self
+
+    def commit(self, cursor: sqlite3.Cursor | None = None) -> "Knex":
+        c = self.db.cursor() if not cursor else cursor
+        c.execute("COMMIT;")
+        return self
+
+    def rollback(self, cursor: sqlite3.Cursor | None = None) -> "Knex":
+        c = self.db.cursor() if not cursor else cursor
+        c.execute("ROLLBACK;")
+        return self
+
+    def count(self, column: str = "*") -> str:
+        return self.query_builder.count(column)
+
     def select(self, *args: str | list[str]) -> "Knex":
         self.query_builder.select(*args)
         return self
@@ -140,7 +158,7 @@ class Knex:
         faulty = None
         cursor = self.db.cursor()
         try:
-            cursor.execute("BEGIN;")
+            self.begin(cursor)
             for statement in statements:
                 faulty = statement
                 cursor.execute(statement[0], statement[1])
@@ -148,7 +166,7 @@ class Knex:
             return True
         except Error:
             self.logger.error(f"An error occured when executing: {red(faulty)}")
-            cursor.execute("ROLLBACK;")
+            self.rollback(cursor)
             return False
 
     def update(
@@ -176,13 +194,13 @@ class Knex:
             return False
         cursor = self.db.cursor()
         try:
-            cursor.execute("BEGIN;")
+            self.begin(cursor)
             cursor.execute(self.query_builder.to_string(), self.query_builder.values)
             self.db.commit()
             self.query_builder.reset()
             return True
         except Exception:
-            cursor.execute("ROLLBACK;")
+            self.rollback(cursor)
             return False
 
     def query(self, json: bool = True) -> list[tuple[Any]] | list[dict[str, Any]]:
@@ -205,10 +223,10 @@ class Knex:
 
     def raw(self, sql: str, params: list[Any] | None = None, json: bool = True):
         cursor = self.db.cursor()
-        insert_or_update = "INSERT INTO" in sql or "UPDATE" in sql
+        insert_or_update = "INSERT INTO" in sql or "UPDATE" in sql or "DELETE" in sql
         try:
             if insert_or_update:
-                cursor.execute("BEGIN;")
+                self.begin(cursor)
             cursor.execute(sql) if params == None else cursor.execute(sql, params)
             if insert_or_update:
                 self.db.commit()
@@ -221,7 +239,7 @@ class Knex:
             return data
         except Error as e:
             if insert_or_update:
-                cursor.execute("ROLLBACK;")
+                self.rollback(cursor)
             self.logger.error(e)
             self.query_builder.reset()
             return []
@@ -235,6 +253,8 @@ class Knex:
                     value = datetime.fromtimestamp(float(value)).strftime(
                         "%Y-%m-%dT%H:%M:%SZ"
                     )
+                if "COUNT(" in keys[i]:
+                    keys[i] = "count"
                 block[keys[i]] = value
             res.append(block)
         return res
@@ -277,3 +297,7 @@ class Knex:
                     break
             if not result:
                 raise TypeError("One or more values inserted do not match column type")
+
+    @property
+    def db_tables(self):
+        return self.__tables
