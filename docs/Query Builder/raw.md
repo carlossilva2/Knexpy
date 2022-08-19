@@ -7,6 +7,7 @@
 `json` (optional): Return data as JSON. Default to `True`
 
 Executes a manual SQL statement. It will auto generate a transaction if statement is an Update, a Delete or an Insert.
+Raw statements cannot chain any other method.
 
 ```python
 db = Knex("<db name>")

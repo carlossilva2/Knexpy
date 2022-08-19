@@ -4,7 +4,7 @@
 
 `name`: Name to give the table
 
-`fields`: A list containing all the columns of the table. Use [Field API](../fields/fields.md) to create the fields necessary.
+`fields`: A list containing all the columns of the table. Use [Field API](../fields/Fields.md) to create the fields necessary.
 
 `not_exists` (optional): IF NOT EXISTS clause. Defaults to `True`
 
