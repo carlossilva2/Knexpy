@@ -16,6 +16,7 @@ A query builder for SQLite3 based on Knexjs
 * JSON mapping
 
 You can report bugs and discuss feature on the [GitHub issues page](https://github.com/carlossilva2/Knexpy/issues).
+For more detailed information check [Readthedocs](https://knexpy.readthedocs.io/)
 
 ## Examples
 
