@@ -22,7 +22,7 @@ setup(
     description="A KnexJS like module for abstracting Python's SQLite",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    version="0.1.0",
+    version="0.1.1",
     url="https://github.com/carlossilva2/Knexpy",
     packages=find_packages(),
     license="GPLv3",
@@ -46,6 +46,6 @@ setup(
     package_data={},
     project_urls={
         "Source": "https://github.com/carlossilva2/Knexpy",
+        "Documentation": "https://knexpy.readthedocs.io",
     },
 )
-# "Documentation": "https://knexpy.readthedocs.io",

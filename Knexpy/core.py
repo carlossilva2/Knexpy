@@ -121,14 +121,14 @@ class Knex:
             return (statement, values)
         cursor = self.db.cursor()
         try:
-            cursor.execute("BEGIN;")
+            self.begin(cursor)
             cursor.execute(statement, values)
             self.db.commit()
             self.query_builder.reset()
             return True
         except Error:
             self.logger.error(f"An error occured when executing: {red(statement)}")
-            cursor.execute("ROLLBACK;")
+            self.rollback(cursor)
             self.query_builder.reset()
             return False
 
