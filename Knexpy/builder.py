@@ -415,6 +415,7 @@ class Querybuilder:
         self.__update = self.__originals.get("update", "")
         self.__delete = self.__originals.get("delete", "")
         self.values = []
+        self.__current_transaction = None
         return self
 
     @property

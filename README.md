@@ -4,6 +4,8 @@
 [![Downloads](https://pepy.tech/badge/knexpy)](https://pepy.tech/project/knexpy)
 [![Supported Versions](https://img.shields.io/pypi/pyversions/knexpy.svg)](https://pypi.org/project/knexpy)
 [![Documentation Status](https://readthedocs.org/projects/knexpy/badge/?version=latest)](https://knexpy.readthedocs.io/en/latest/?badge=latest)
+[![Black](https://img.shields.io/badge/code%20style-black-000000)](https://github.com/psf/black)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 <a href="https://www.buymeacoffee.com/cmsilva" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="23" width="100" style="border-radius:5px" /></a>
 
 A query builder for SQLite3 based on Knexjs

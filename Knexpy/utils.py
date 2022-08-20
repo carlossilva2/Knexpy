@@ -1,11 +1,13 @@
 from hashlib import md5
+from random import randint
 from time import time
 from typing import Type
 
 
 def uuid(*args: str) -> str:
     "Method to encrypt data"
-    string = ""
+    starting_salt = randint(0, 1000000)
+    string = f"{starting_salt}"
     for item in args:
         string += str(item)
     string = f"{time()}-{string}"
