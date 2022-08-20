@@ -1,5 +1,6 @@
 # Knexpy
 
+<center>
 <a href="https://github.com/carlossilva2/Knexpy/blob/main/LICENSE" target="blank"><img src="https://img.shields.io/github/license/carlossilva2/Knexpy?style=round-square&color=green" alt="Knexpy License" /></a>
 [![Downloads](https://pepy.tech/badge/knexpy)](https://pepy.tech/project/knexpy)
 [![Knexpy](https://img.shields.io/pypi/v/knexpy.svg)](https://pypi.org/project/knexpy)
@@ -9,6 +10,7 @@
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![Github](https://img.shields.io/badge/GitHub-100000?style=plastic&logo=github&logoColor=white)](https://github.com/carlossilva2/Knexpy)
 <a href="https://www.buymeacoffee.com/cmsilva" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/default-orange.png" alt="Buy Me A Coffee" height="23" width="100" style="border-radius:5px" /></a>
+</center>
 
 A query builder for SQLite3 based on Knexjs
 
@@ -30,6 +32,6 @@ pip install .
 
 ## Demo
 
-![Demo](../static/Demo.gif)
+![Demo](https://github.com/carlossilva2/Knexpy/blob/main/static/Demo.gif?raw=true)
 
 Check [PyPi](https://pypi.org/project/knexpy/) for more information.
