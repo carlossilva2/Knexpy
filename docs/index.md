@@ -2,6 +2,7 @@
 
 <a href="https://github.com/carlossilva2/Knexpy/blob/main/LICENSE" target="blank"><img src="https://img.shields.io/github/license/carlossilva2/Knexpy?style=round-square&color=green" alt="Knexpy License" /></a>
 [![Downloads](https://pepy.tech/badge/knexpy)](https://pepy.tech/project/knexpy)
+[![Knexpy](https://img.shields.io/pypi/v/knexpy.svg)](https://pypi.org/project/knexpy)
 [![Supported Versions](https://img.shields.io/pypi/pyversions/knexpy.svg)](https://pypi.org/project/knexpy)
 [![Documentation Status](https://readthedocs.org/projects/knexpy/badge/?version=latest)](https://knexpy.readthedocs.io/en/latest/?badge=latest)
 [![Black](https://img.shields.io/badge/code%20style-black-000000)](https://github.com/psf/black)
